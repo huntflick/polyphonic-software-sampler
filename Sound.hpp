@@ -7,19 +7,18 @@
 
 class Sound {
     private:
-        Uint8* audioBuf;
-        Uint32 audioLen;
+        Sint16* audioBuffer;
+        Uint32 sampleCount;
+        float baseFrequency;
         std::string name;
-        bool playing = false;
     
     public:
-        Sound(Uint8*, Uint32, std::string);
+        Sound(Uint8*, Uint32, std::string, float);
         ~Sound();
-        Uint8* getBuffer();
-        Uint32 getLength();
+        Sint16* getBuffer();
+        Uint32 getSampleCount();
+        float getBaseFreq();
         std::string getName();
-        void setPlaying(bool);
-        bool isPlaying();
 };
 
 #endif

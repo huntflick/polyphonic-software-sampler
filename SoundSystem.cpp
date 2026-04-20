@@ -1,42 +1,32 @@
 #include "SoundSystem.hpp"
 
 SoundSystem::SoundSystem() {
-    this->stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, NULL, SoundSystem::callback, this);
+    SDL_AudioSpec desired;
+    desired.format = SDL_AUDIO_S16;
+    desired.channels = 2;
+    desired.freq = 44100;
+    this->stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &desired, SoundSystem::callback, this);
     if (!(this->stream)) {
         std::cerr << SDL_GetError();
         exit(1);
     }
-    SDL_AudioDeviceID device = SDL_GetAudioStreamDevice(this->stream);
-    if (device == 0) {
-        std::cerr << SDL_GetError();
-        exit(1);
-    }
     int sampleFrames;
-    bool formatSuccess = SDL_GetAudioDeviceFormat(device, &this->spec, &sampleFrames);
-    if (!formatSuccess) {
-        std::cerr << SDL_GetError();
-        exit(1);
-    }
-    bool unpause = SDL_ResumeAudioStreamDevice(this->stream);
-    if (!unpause) {
-        std::cerr << SDL_GetError();
-        exit(1);
-    }
+    SDL_GetAudioDeviceFormat(SDL_GetAudioStreamDevice(this->stream), &this->spec, &sampleFrames);
+    SDL_ResumeAudioStreamDevice(this->stream);
     float frequency = 220.0f;
-    float duration = 0.1f;
-    int sampleRate = this->spec.freq;
-    int numSamples = static_cast<int>(duration * sampleRate);
+    float duration = 1.0f;
+    int numSamples = static_cast<int>(duration * this->spec.freq);
     int bytesPerSample = SDL_AUDIO_BYTESIZE(this->spec.format);
     Uint32 bufferSize = numSamples * bytesPerSample * this->spec.channels;
     Uint8* audioBuf = (Uint8*)SDL_malloc(bufferSize);
     Sint16* sBuf = (Sint16*)audioBuf;
     for (int i = 0; i < numSamples; ++i) {
-        Sint16 val = static_cast<Sint16>(32767 * 0.5 * sin(2.0 * M_PI * frequency * i / sampleRate));
+        Sint16 val = static_cast<Sint16>(32767 * 0.5 * sin(2.0 * M_PI * frequency * i / this->spec.freq));
         for (int c = 0; c < this->spec.channels; ++c) {
             sBuf[i * this->spec.channels + c] = val;
         }
     }
-    this->instruments.push_back(Sound(audioBuf, bufferSize, "sinWave"));
+    this->instruments.push_back(Sound(audioBuf, bufferSize, "sinWave", 220.0f));
 }
 
 SoundSystem::~SoundSystem() {
@@ -51,118 +41,97 @@ SoundSystem::~SoundSystem() {
 }
 
 int SoundSystem::loadSong(std::string filePath) {
-    bool success = true;
     Uint8* audioBuf = nullptr;
     Uint32 audioLen = 0;
     SDL_AudioSpec fileSpec;
     bool loaded = SDL_LoadWAV(filePath.c_str(), &fileSpec, &audioBuf, &audioLen);
     if (!loaded) {
         std::cerr << SDL_GetError() << '\n';
-        return false;
+        return -1;
     }
-    int convertedLenHolder = 0;
-    bool convert = SDL_ConvertAudioSamples(&fileSpec, audioBuf, audioLen, &this->spec, &audioBuf, &convertedLenHolder);
-    if (!convert) {
-        std::cerr << SDL_GetError();
+    Uint8* convertedBuf = nullptr;
+    int convertedLen = 0;
+    if (!SDL_ConvertAudioSamples(&fileSpec, audioBuf, audioLen, &this->spec, &convertedBuf, &convertedLen)) {
+        std::cerr << SDL_GetError() << '\n';
         SDL_free(audioBuf);
-        return false;
+        return -1;
     }
-    audioLen = static_cast<Uint32>(convertedLenHolder);
-    this->songs.push_back(Sound(audioBuf, audioLen, filePath));
-
+    SDL_free(audioBuf);
+    this->songs.push_back(Sound(convertedBuf, (Uint32)convertedLen, filePath, 1.0f));
     return this->songs.size() - 1;
 }
 
-bool SoundSystem::playSong(int index, int loop) {
-    if (index < this->songs.size()) {
-        Sound requested = this->songs[index];
-        SoundStates soundStruct;
-        soundStruct.buffer = requested.getBuffer();
-        soundStruct.length = requested.getLength();
-        soundStruct.name = requested.getName();
-        soundStruct.bufferStart = requested.getBuffer();
-        soundStruct.originalLength = requested.getLength();
-        if (loop != 0) {
-            soundStruct.loop = 1;
-        }
-        this->playback.push_back(soundStruct);
-        return true;
-    }
-    std::cerr << "Could not play song\n";
-    return false;
-}
-
-bool SoundSystem::playSong(std::string filePath, int loop) {
-    int loaded = loadSong(filePath);
-    if (!loaded) {
-        std::cerr << SDL_GetError();
+bool SoundSystem::playSong(int index, bool loop) {
+    if (index >= this->songs.size()) {
+        std::cerr << "Could not play song\n";
         return false;
     }
-    return this->playSong(loaded, loop);
+    Sound& requested = this->songs[index];
+    SoundStates soundStruct;
+    soundStruct.bufferStart = requested.getBuffer();
+    soundStruct.totalSamples = requested.getSampleCount();
+    soundStruct.currentPos = 0.0;
+    soundStruct.baseFreq = 1.0f;
+    soundStruct.targetFreq = 1.0f;
+    soundStruct.name = requested.getName();
+    soundStruct.loop = loop;
+    soundStruct.isInstrument = false;
+    soundStruct.active = true;
+    this->playback.push_back(soundStruct);
+    return true;
 }
 
 int SoundSystem::loadInstrument(std::string filePath) {
-    bool success = true;
     Uint8* audioBuf;
     Uint32 audioLen;
     SDL_AudioSpec fileSpec;
     bool loaded = SDL_LoadWAV(filePath.c_str(), &fileSpec, &audioBuf, &audioLen);
     if (!loaded) {
         std::cerr << SDL_GetError() << '\n';
-        return false;
+        return -1;
     }
-    int convertedLenHolder = 0;
-    bool convert = SDL_ConvertAudioSamples(&fileSpec, audioBuf, audioLen, &this->spec, &audioBuf, &convertedLenHolder);
-    if (!convert) {
-        std::cerr << SDL_GetError();
-        return false;
+    Uint8* convertedBuf;
+    int convertedLen;
+    if (SDL_ConvertAudioSamples(&fileSpec, audioBuf, audioLen, &this->spec, &convertedBuf, &convertedLen)) {
+        SDL_free(audioBuf);
+        this->instruments.push_back(Sound(convertedBuf, (Uint32)convertedLen, filePath, 220.0f));
     }
-    audioLen = static_cast<Uint32>(convertedLenHolder);
-    this->instruments.push_back(Sound(audioBuf, audioLen, filePath));
-
-    return this->songs.size() - 1;
+    else {
+        std::cerr << "Could not load instrument " << filePath << '\n';
+        return -1;
+    }
+    return (int)this->songs.size() - 1;
 }
 
-bool SoundSystem::playInstrument(int index) {
+bool SoundSystem::playInstrument(int index, float targetFreq) {
     if (index >= this->instruments.size()) {
         std::cerr << "Invalid instrument\n";
         return false;
     }
     Sound &requested = this->instruments[index];
-    if (!requested.isPlaying()) {
-        requested.setPlaying(true);
-        SoundStates soundStruct;
-        soundStruct.buffer = requested.getBuffer();
-        soundStruct.length = requested.getLength();
-        soundStruct.name = requested.getName();
-        soundStruct.bufferStart = requested.getBuffer();
-        soundStruct.originalLength = requested.getLength();
-        soundStruct.isInstrument = true;
-        this->playback.push_back(soundStruct);
-    }
+    SoundStates soundStruct;
+    soundStruct.bufferStart = (Sint16*)requested.getBuffer();
+    soundStruct.totalSamples = requested.getSampleCount();
+    soundStruct.currentPos = 0.0f;
+    soundStruct.targetFreq = targetFreq;
+    soundStruct.baseFreq = requested.getBaseFreq();
+    soundStruct.name = requested.getName();
+    soundStruct.isInstrument = true;
+    soundStruct.loop = true;
+    soundStruct.active = true;
+    this->playback.push_back(soundStruct);
     return true;
 }
 
-bool SoundSystem::playInstrument(std::string filePath) {
-    int loaded = loadSong(filePath);
-    if (!loaded) {
-        std::cerr << SDL_GetError();
-        return false;
-    }
-    return this->playInstrument(loaded);
-}
-
-void SoundSystem::stopInstrument(int index) {
+void SoundSystem::stopInstrument(int index, float freq) {
     if (index >= this->instruments.size()) {
         std::cerr << "Invalid instrument\n";
     }
     Sound &requested = this->instruments[index];
-    if (requested.isPlaying()) {
-        requested.setPlaying(false);
-        for (SoundStates &soundStruct : this->playback) {
-            if (soundStruct.name == requested.getName()) {
-                soundStruct.isInstrument = false;
-            }
+    for (auto &sound : this->playback) {
+        if (sound.name == requested.getName() && sound.targetFreq == freq && sound.isInstrument) {
+            // sound.loop = false;
+            sound.active = false;
         }
     }
 }
@@ -173,38 +142,60 @@ std::vector<SoundStates> SoundSystem::getPlayback() {
 
 void SoundSystem::callback(void* userdata, SDL_AudioStream* astream, int additional_amount, int total_amount) {
     SoundSystem* system = static_cast<SoundSystem*>(userdata);
-    Uint8* mix = new Uint8[additional_amount]();
-    auto sound = system->playback.begin();
-    while (sound != system->playback.end()) {
-        Uint32 totalMixed = 0;
-        while (totalMixed < (Uint32)additional_amount) {
-            Uint32 remaining = (Uint32)additional_amount - totalMixed;
-            Uint32 mixData = std::min(sound->length, remaining);
-            SDL_MixAudio(mix + totalMixed, sound->buffer, system->spec.format, mixData, 1.0);
-            sound->buffer += mixData;
-            sound->length -= mixData;
-            totalMixed += mixData;
-            if (sound->length <= 0) {
-                if (sound->loop != 0 || sound->isInstrument) {
-                    sound->buffer = sound->bufferStart;
-                    sound->length = sound->originalLength;
+    int samplesReq = additional_amount / sizeof(Sint16);
+    std::vector<float> mix(samplesReq, 0.0f);
+    auto itr = system->playback.begin();
+    while (itr != system->playback.end()) {
+        double ratio = itr->getSpeedRatio();
+        for (int i = 0; i < samplesReq; i += system->spec.channels) {
+            if (!itr->active) {
+                break;
+            }
+            int id1 = (int)itr->currentPos;
+            if (id1 >= (int)itr->totalSamples - 1) {
+                if (itr->loop) {
+                    itr->currentPos = fmod(itr->currentPos, (double)itr->totalSamples - 1);
+                    id1 = static_cast<int>(itr->currentPos);
                 }
                 else {
+                    itr->active = false;
                     break;
                 }
             }
+            int id2 = (id1 + 1) % itr->totalSamples;
+            if (id2 >= (int)itr->totalSamples) {
+                id2 = (itr->loop) ? 0 : id1;
+            }
+            double fraction = itr->currentPos - id1;
+            for (int c = 0; c < system->spec.channels; ++c) {
+                int index1 = id1 * system->spec.channels + c;
+                int index2 = id2 * system->spec.channels + c;
+                float s1 = itr->bufferStart[index1];
+                float s2 = itr->bufferStart[index2];
+                float interpolated = s1 + (float)fraction * (s2 - s1);
+                mix[i + c] += interpolated;
+            }
+            itr->currentPos += ratio;
         }
-        if (sound->length <= 0 && !sound->isInstrument && sound->loop == 0) {
-            sound = system->playback.erase(sound);
+        if (!itr->active) {
+            itr = system->playback.erase(itr);
         }
         else {
-            ++sound;
+            ++itr;
         }
     }
-    SDL_PutAudioStreamData(astream, mix, additional_amount);
-    if (mix) {
-        delete[] mix;
+    std::vector<Sint16> output(samplesReq);
+    for (int i = 0; i < samplesReq; ++i) {
+        float sample = mix[i];
+        if (sample > 32767.0f) {
+            sample = 32767.0f;
+        }
+        else if (sample < -32768.0f) {
+            sample = -32768.0f;
+        }
+        output[i] = static_cast<Sint16>(sample);
     }
+    SDL_PutAudioStreamData(astream, output.data(), additional_amount);
 }
 
 std::vector<Sound> SoundSystem::getSongBank() {

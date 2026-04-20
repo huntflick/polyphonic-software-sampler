@@ -26,12 +26,12 @@ class SoundSystem {
         SoundSystem();
         ~SoundSystem();
         int loadSong(std::string);
-        bool playSong(int, int);
-        bool playSong(std::string, int);
+        bool playSong(int, bool);
+        // bool playSong(std::string, int);
         int loadInstrument(std::string);
-        bool playInstrument(int);
-        bool playInstrument(std::string);
-        void stopInstrument(int);
+        bool playInstrument(int, float);
+        // bool playInstrument(std::string);
+        void stopInstrument(int, float);
         std::vector<SoundStates> getPlayback();
         std::vector<Sound> getSongBank();
         std::vector<Sound> getInstrumentBank();
