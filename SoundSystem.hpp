@@ -26,7 +26,8 @@ class SoundSystem {
         SoundSystem();
         ~SoundSystem();
         int loadSong(std::string);
-        bool playSong(int, bool);
+        bool playSong(int);
+        void stopSong(int);
         // bool playSong(std::string, int);
         int loadInstrument(std::string);
         bool playInstrument(int, float);
@@ -37,6 +38,7 @@ class SoundSystem {
         std::vector<Sound> getInstrumentBank();
         std::string getSongName(int);
         std::string getInstrumentName(int);
+        void togglePause(int);
 };
 
 #endif

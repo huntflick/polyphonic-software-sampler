@@ -5,7 +5,9 @@
 #include <thread>
 #include <cstdint>
 #include <map>
+#include <filesystem>
 
+namespace fs = std::filesystem;
 using namespace std::chrono_literals;
 
 int octaveOffset = 0;
@@ -23,16 +25,32 @@ int main(int argc, char** argv) {
     std::map<SDL_Keycode, ActiveNote> activeNotes;
 
     SoundSystem tester;
-    tester.loadSong("Songs/song.wav");
-    tester.playSong(0, true);
-    tester.loadInstrument("Instruments/trumpet_a3.wav");
+    std::vector<std::string> songPaths;
+    for (const auto& entry : std::filesystem::directory_iterator("Songs/")) {
+        if (entry.path().extension() == ".wav") {
+            songPaths.push_back(entry.path().string());
+        }
+    }
+    std::sort(songPaths.begin(), songPaths.end());
+    for (const auto& path : songPaths) {
+        tester.loadSong(path);
+    }
+    std::vector<std::string> instrumentPaths;
+    for (const auto& entry : std::filesystem::directory_iterator("Instruments/")) {
+        if (entry.path().extension() == ".wav") {
+            instrumentPaths.push_back(entry.path().string());
+        }
+    }
+    std::sort(instrumentPaths.begin(), instrumentPaths.end());
+    for (const auto& path : instrumentPaths) {
+        tester.loadInstrument(path);
+    }
+    tester.playSong(0);
 
     int instrument = 0;
     int song = 0;
     bool exit = false;
-    int numKeys;
     SDL_Event e;
-
     while (!exit) {
         while (SDL_PollEvent(&e)) {
             switch (e.type) {
@@ -131,6 +149,52 @@ int main(int argc, char** argv) {
                             case SDLK_0:
                                 manager.spawnWindow("Keyboard", 700, 300, 0);
                                 break;
+                            case SDLK_1:
+                                instrument = 0;
+                                break;
+                            case SDLK_2:
+                                instrument = 1;
+                                break;
+                            case SDLK_3:
+                                instrument = 2;
+                                break;
+                            case SDLK_4:
+                                instrument = 3;
+                                break;
+                            case SDLK_5:
+                                instrument = 4;
+                                break;
+                            case SDLK_LEFT:
+                                tester.stopSong(song);
+                                tester.playSong(song);
+                                break;
+                            case SDLK_DOWN:
+                                tester.stopSong(song);
+                                --song;
+                                if (song < 0) {
+                                    song = tester.getSongBank().size() - 1;
+                                }
+                                tester.playSong(song);
+                                break;
+                            case SDLK_RIGHT:
+                                tester.stopSong(song);
+                                ++song;
+                                if (song > tester.getSongBank().size() - 1) {
+                                    song = 0;
+                                }
+                                tester.playSong(song);
+                                break;
+                            case SDLK_UP:
+                                tester.stopSong(song);
+                                ++song;
+                                if (song > tester.getSongBank().size() - 1) {
+                                    song = 0;
+                                }
+                                tester.playSong(song);
+                                break;
+                            case SDLK_SPACE:
+                                tester.togglePause(song);
+                                break;
                         }
                         if (targetFreq > 0) {
                             tester.playInstrument(instrument, targetFreq);
@@ -145,24 +209,8 @@ int main(int argc, char** argv) {
                 
             }
         }
-        const bool* keyboardState = SDL_GetKeyboardState(&numKeys);
-        if (keyboardState[SDL_SCANCODE_1]) {
-            instrument = 0;
-        }
-        if (keyboardState[SDL_SCANCODE_2]) {
-            instrument = 1;
-        }
-        if (keyboardState[SDL_SCANCODE_3]) {
-            instrument = 2;
-        }
-        if (keyboardState[SDL_SCANCODE_4]) {
-            instrument = 3;
-        }
-        if (keyboardState[SDL_SCANCODE_5]) {
-            instrument = 4;
-        }
-        if (keyboardState[SDL_SCANCODE_6]) {
-            instrument = 5;
+        if (instrument > tester.getInstrumentBank().size() - 1) {
+            instrument = tester.getInstrumentBank().size() - 1;
         }
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);

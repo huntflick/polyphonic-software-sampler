@@ -61,7 +61,7 @@ int SoundSystem::loadSong(std::string filePath) {
     return this->songs.size() - 1;
 }
 
-bool SoundSystem::playSong(int index, bool loop) {
+bool SoundSystem::playSong(int index) {
     if (index >= this->songs.size()) {
         std::cerr << "Could not play song\n";
         return false;
@@ -74,11 +74,23 @@ bool SoundSystem::playSong(int index, bool loop) {
     soundStruct.baseFreq = 1.0f;
     soundStruct.targetFreq = 1.0f;
     soundStruct.name = requested.getName();
-    soundStruct.loop = loop;
+    soundStruct.loop = true;
     soundStruct.isInstrument = false;
     soundStruct.active = true;
     this->playback.push_back(soundStruct);
     return true;
+}
+
+void SoundSystem::stopSong(int index) {
+    if (index >= this->songs.size()) {
+        std::cerr << "Invalid song\n";
+    }
+    Sound &requested = this->songs[index];
+    for (auto &sound : this->playback) {
+        if (sound.name == requested.getName() && !sound.isInstrument) {
+            sound.active = false;
+        }
+    }
 }
 
 int SoundSystem::loadInstrument(std::string filePath) {
@@ -146,6 +158,10 @@ void SoundSystem::callback(void* userdata, SDL_AudioStream* astream, int additio
     std::vector<float> mix(samplesReq, 0.0f);
     auto itr = system->playback.begin();
     while (itr != system->playback.end()) {
+        if (itr->paused) {
+            ++itr;
+            continue;
+        }
         double ratio = itr->getSpeedRatio();
         for (int i = 0; i < samplesReq; i += system->spec.channels) {
             if (!itr->active) {
@@ -187,13 +203,14 @@ void SoundSystem::callback(void* userdata, SDL_AudioStream* astream, int additio
     std::vector<Sint16> output(samplesReq);
     for (int i = 0; i < samplesReq; ++i) {
         float sample = mix[i];
-        if (sample > 32767.0f) {
-            sample = 32767.0f;
-        }
-        else if (sample < -32768.0f) {
-            sample = -32768.0f;
-        }
-        output[i] = static_cast<Sint16>(sample);
+        float vol = 0.4f;
+        // if (sample > 32767.0f) {
+        //     sample = 32767.0f;
+        // }
+        // else if (sample < -32768.0f) {
+        //     sample = -32768.0f;
+        // }
+        output[i] = static_cast<Sint16>(sample * vol);
     }
     SDL_PutAudioStreamData(astream, output.data(), additional_amount);
 }
@@ -215,7 +232,19 @@ std::string SoundSystem::getSongName(int songIndex) {
 
 std::string SoundSystem::getInstrumentName(int instrumentIndex) {
     if (instrumentIndex >= this->instruments.size()) {
-        return "INVALID Instrument";
+        return "INVALID INSTRUMENT";
     }
     return this->instruments[instrumentIndex].getName();
+}
+
+void SoundSystem::togglePause(int index) {
+    if (index >= this->songs.size()) {
+        std::cerr << "Invalid song\n";
+    }
+    Sound &requested = this->songs[index];
+    for (auto &sound : this->playback) {
+        if (sound.name == requested.getName() && !sound.isInstrument) {
+            sound.paused = !sound.paused;
+        }
+    }
 }

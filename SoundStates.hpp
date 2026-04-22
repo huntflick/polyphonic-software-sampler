@@ -17,13 +17,7 @@ struct SoundStates {
     double getSpeedRatio() const {
         return (double)targetFreq / baseFreq;
     }
-    // Uint8* buffer;
-    // Uint32 length;
-    // Uint8* bufferStart;
-    // Uint32 originalLength;
-    // std::string name;
-    // int loop = 0;
-    // bool isInstrument = false;
+    bool paused = false;
 };
 
 #endif
