@@ -25,10 +25,21 @@ int main(int argc, char** argv) {
     std::map<SDL_Keycode, ActiveNote> activeNotes;
 
     SoundSystem tester;
+
+    const char* base = SDL_GetBasePath();
+    if (!base) {
+        return -1; 
+    }
+    std::string basePath(base);
+    std::filesystem::path songsDir = std::filesystem::path(basePath) / "Songs";
+    std::filesystem::path instrumentsDir = std::filesystem::path(basePath) / "Instruments";
+
     std::vector<std::string> songPaths;
-    for (const auto& entry : std::filesystem::directory_iterator("Songs/")) {
-        if (entry.path().extension() == ".wav") {
-            songPaths.push_back(entry.path().string());
+    if (std::filesystem::exists(songsDir)) {
+        for (const auto& entry : std::filesystem::directory_iterator(songsDir)) {
+            if (entry.path().extension() == ".wav") {
+                songPaths.push_back(entry.path().string());
+            }
         }
     }
     std::sort(songPaths.begin(), songPaths.end());
@@ -36,9 +47,11 @@ int main(int argc, char** argv) {
         tester.loadSong(path);
     }
     std::vector<std::string> instrumentPaths;
-    for (const auto& entry : std::filesystem::directory_iterator("Instruments/")) {
-        if (entry.path().extension() == ".wav") {
-            instrumentPaths.push_back(entry.path().string());
+    if (std::filesystem::exists(instrumentsDir)) {
+        for (const auto& entry : std::filesystem::directory_iterator(instrumentsDir)) {
+            if (entry.path().extension() == ".wav") {
+                instrumentPaths.push_back(entry.path().string());
+            }
         }
     }
     std::sort(instrumentPaths.begin(), instrumentPaths.end());

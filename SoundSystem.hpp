@@ -7,6 +7,7 @@
 #include <SDL3/SDL.h>
 #include <iostream>
 #include <SDL3/SDL_stdinc.h>
+#include <filesystem>
 #include "Sound.hpp"
 #include "SoundStates.hpp"
 

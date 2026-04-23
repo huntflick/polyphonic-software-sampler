@@ -57,7 +57,8 @@ int SoundSystem::loadSong(std::string filePath) {
         return -1;
     }
     SDL_free(audioBuf);
-    this->songs.push_back(Sound(convertedBuf, (Uint32)convertedLen, filePath, 1.0f));
+    std::string fileName = std::filesystem::path(filePath).filename().string();
+    this->songs.push_back(Sound(convertedBuf, (Uint32)convertedLen, fileName, 1.0f));
     return this->songs.size() - 1;
 }
 
@@ -106,7 +107,8 @@ int SoundSystem::loadInstrument(std::string filePath) {
     int convertedLen;
     if (SDL_ConvertAudioSamples(&fileSpec, audioBuf, audioLen, &this->spec, &convertedBuf, &convertedLen)) {
         SDL_free(audioBuf);
-        this->instruments.push_back(Sound(convertedBuf, (Uint32)convertedLen, filePath, 220.0f));
+        std::string fileName = std::filesystem::path(filePath).filename().string();
+        this->instruments.push_back(Sound(convertedBuf, (Uint32)convertedLen, fileName, 220.0f));
     }
     else {
         std::cerr << "Could not load instrument " << filePath << '\n';
